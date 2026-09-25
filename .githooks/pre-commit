@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit — analyse anti-PolinRider AVANT chaque commit (bet360-ci).
+# Refuse le commit si un marqueur de la campagne est present dans l'arbre.
+# Active par : git config core.hooksPath .githooks   (fait par "npm install" via
+# le script prepare, ou a la main pour les projets non-npm).
+# La meme analyse tourne cote GitHub (workflow securite) : ce hook evite juste
+# que le commit infecte parte de votre machine.
+set -u
+E=0
+ko() { echo "pre-commit[SECURITE]: $1" >&2; E=1; }
+
+# fichiers concernes par CE commit (rapide), sinon tout l'arbre si pas de stage
+FICHIERS=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null)
+[ -z "$FICHIERS" ] && exit 0
+
+while IFS= read -r F; do
+  [ -f "$F" ] || continue
+  case "$F" in
+    *.vscode/tasks.json)
+      grep -q "folderOpen" "$F" && grep -qE "node .*(woff2|fonts/)" "$F" && ko "tasks.json auto-exec d'une fonte : $F" ;;
+    *.vscode/settings.json)
+      grep -qE '"task\.allowAutomaticTasks"[[:space:]]*:[[:space:]]*(true|"on")' "$F" && ko "settings.json arme allowAutomaticTasks : $F" ;;
+    *.woff2|*.woff|*.ttf|*.eot)
+      M=$(head -c 4 "$F" | LC_ALL=C tr -d '\0')
+      case "$M" in wOF2|wOFF|OTTO|true|ttcf|"") : ;;
+        *) head -c 4096 "$F" | grep -qE "global\[|_0x[0-9a-f]{2,}" && ko "fonte FACTICE (JavaScript) : $F" ;;
+      esac ;;
+    .env) ko ".env ne se commite pas (regle post-incident)" ;;
+  esac
+  case "$F" in
+    *.md|.githooks/*) : ;;
+    *) if grep -qIE "global\['!'\]|global\.i=\"A9-|atob\(process\.env|catbox\.moe" "$F" 2>/dev/null; then
+         ko "signature PolinRider dans : $F"
+       fi
+       if grep -qIE " {200,}\S" "$F" 2>/dev/null && [[ "$F" =~ \.(js|ts|cjs|mjs)$ ]]; then
+         ko "ligne a 200+ espaces suivis de code (camouflage) : $F"
+       fi ;;
+  esac
+done <<< "$FICHIERS"
+
+if [ "$E" = 1 ]; then
+  echo "" >&2
+  echo "COMMIT REFUSE : marqueurs de la campagne PolinRider/BeaverTail detectes." >&2
+  echo "Voir run_book issue #112 et securite/nettoyage-polinrider-dev.sh." >&2
+  echo "(contournement, UNIQUEMENT si faux positif confirme par Moussa : git commit --no-verify)" >&2
+  exit 1
+fi
+exit 0

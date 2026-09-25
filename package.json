@@ -2,5 +2,10 @@
   "name": "alt-fetcher",
   "version": "2.0.22",
   "type": "module",
-  "exports": { ".": "./index.js" }
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true"
+  }
 }
