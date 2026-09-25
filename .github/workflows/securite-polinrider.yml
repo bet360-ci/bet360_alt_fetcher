@@ -1,0 +1,12 @@
+# Analyse anti-malware PolinRider/BeaverTail — appelant.
+# La logique vit dans bet360-ci/run_book/.github/workflows/polinrider-scan.yml :
+# la modifier LA-BAS, jamais ici. Pose le 2026-09-25 apres la seconde vague.
+name: securite
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  polinrider:
+    uses: bet360-ci/run_book/.github/workflows/polinrider-scan.yml@main
