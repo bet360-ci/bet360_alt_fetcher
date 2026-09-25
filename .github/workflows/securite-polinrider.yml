@@ -1,12 +1,20 @@
 # Analyse anti-malware PolinRider/BeaverTail — appelant.
 # La logique vit dans bet360-ci/run_book/.github/workflows/polinrider-scan.yml :
 # la modifier LA-BAS, jamais ici. Pose le 2026-09-25 apres la seconde vague.
+#
+# PERMISSIONS — PIEGE MESURE LE 2026-09-25 : un workflow REUTILISABLE ne peut
+# PAS exceder les permissions de son APPELANT. Le scanner ouvre une issue sur
+# detection, donc il demande `issues: write` ; un appelant qui n'accorde que
+# `contents: read` fait echouer le workflow au DEMARRAGE (`startup_failure`),
+# SANS journal et SANS check — la porte parait posee et ne garde plus rien.
+# C'est arrive sur tout le depot pendant six heures. Ne pas retirer `issues`.
 name: securite
 on:
   push:
   pull_request:
 permissions:
   contents: read
+  issues: write
 jobs:
   polinrider:
     uses: bet360-ci/run_book/.github/workflows/polinrider-scan.yml@main
