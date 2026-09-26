@@ -1,20 +1,91 @@
-# Analyse anti-malware PolinRider/BeaverTail — appelant.
-# La logique vit dans bet360-ci/run_book/.github/workflows/polinrider-scan.yml :
-# la modifier LA-BAS, jamais ici. Pose le 2026-09-25 apres la seconde vague.
+# Analyse anti-malware PolinRider/BeaverTail — AUTONOME, et c'est deliberé.
 #
-# PERMISSIONS — PIEGE MESURE LE 2026-09-25 : un workflow REUTILISABLE ne peut
-# PAS exceder les permissions de son APPELANT. Le scanner ouvre une issue sur
-# detection, donc il demande `issues: write` ; un appelant qui n'accorde que
-# `contents: read` fait echouer le workflow au DEMARRAGE (`startup_failure`),
-# SANS journal et SANS check — la porte parait posee et ne garde plus rien.
-# C'est arrive sur tout le depot pendant six heures. Ne pas retirer `issues`.
+# Les 43 autres depots de l'org appellent le workflow reutilisable de
+# bet360-ci/run_book. Ici c'est IMPOSSIBLE : ce depot est PUBLIC et run_book est
+# PRIVE — GitHub interdit a un depot public d'appeler un workflow d'un depot
+# prive. Resultat mesure le 2026-09-26 : trois `failure` d'affilee en
+# `startup_failure`, sans aucun job et sans journal (« log not found »). La porte
+# paraissait posee et ne gardait rien depuis le 2026-09-25.
+#
+# La logique est donc recopiee ici, volontairement courte : ce depot ne contient
+# que deux fichiers, `index.js` (le bundle minifie) et `package.json`.
 name: securite
 on:
   push:
   pull_request:
 permissions:
   contents: read
-  issues: write
 jobs:
   polinrider:
-    uses: bet360-ci/run_book/.github/workflows/polinrider-scan.yml@main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Signatures de CONTENU. `grep -F` (chaines litterales) et jamais une
+      # regex bricolee : sur macOS comme sur GNU, un echappement invalide fait
+      # sortir grep en code 2 et N'EXAMINE RIEN, en silence. Ce piege a deja
+      # masque de vrais resultats.
+      - name: Signatures PolinRider dans le bundle
+        run: |
+          set -u
+          MOTIFS='global['"'"'!'"'"']=
+global.i="A9-
+global['"'"'_V'"'"']
+atob(process.env
+createRequire(import.meta.url)'
+          TROUVE=0
+          while IFS= read -r M; do
+            [ -z "$M" ] && continue
+            if grep -rlF -- "$M" --include='*.js' --include='*.json' . 2>/dev/null | grep -q .; then
+              echo "::error::signature PolinRider trouvee : $M"
+              grep -rlF -- "$M" --include='*.js' --include='*.json' . 2>/dev/null
+              TROUVE=1
+            fi
+          done <<< "$MOTIFS"
+          [ "$TROUVE" -eq 0 ] || exit 1
+          echo "aucune signature de contenu"
+
+      # Le camouflage : la charge est collee en FIN DE LIGNE apres ~149 espaces,
+      # parfois AU MILIEU du fichier. Un bundle minifie n'a aucune raison de
+      # porter 150 espaces consecutifs suivis de code.
+      - name: Bloc de 150+ espaces suivi de code
+        run: |
+          set -u
+          if grep -rnE ' {150,}[^ ]' --include='*.js' --include='*.json' . 2>/dev/null | grep -q .; then
+            echo "::error::bloc de 150+ espaces suivi de code — camouflage PolinRider"
+            grep -rnE ' {150,}[^ ]' --include='*.js' --include='*.json' . 2>/dev/null | cut -c1-160
+            exit 1
+          fi
+          echo "aucun bloc d'espaces suspect"
+
+      # Le kit de fausses polices et le vecteur d'auto-execution VS Code.
+      # Aucune installation FontAwesome legitime n'existe dans l'org : tout
+      # repertoire */fonts/fa-* est malveillant par construction.
+      - name: Chemins interdits (fausses polices, .vscode)
+        run: |
+          set -u
+          H=$(find . -path ./.git -prune -o \( -path '*/fonts/fa-*' -o -path '*/.vscode/*' \) -print 2>/dev/null)
+          if [ -n "$H" ]; then
+            echo "::error::chemin interdit present"
+            echo "$H"
+            exit 1
+          fi
+          echo "aucun chemin interdit"
+
+      # Ce depot ne doit JAMAIS contenir autre chose que le bundle, son
+      # manifeste et les deux fichiers de garde. Tout ajout est suspect : c'est
+      # un artefact de publication, pas un projet.
+      - name: Le depot ne contient que ce qu'il doit contenir
+        run: |
+          set -u
+          ATTENDU='./.github/workflows/securite-polinrider.yml
+./.githooks/pre-commit
+./index.js
+./package.json'
+          REEL=$(find . -path ./.git -prune -o -type f -print 2>/dev/null | sort)
+          if [ "$REEL" != "$(echo "$ATTENDU" | sort)" ]; then
+            echo "::error::contenu inattendu dans le depot publie"
+            diff <(echo "$ATTENDU" | sort) <(echo "$REEL") || true
+            exit 1
+          fi
+          echo "contenu conforme"
