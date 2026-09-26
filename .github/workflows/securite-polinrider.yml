@@ -1,4 +1,4 @@
-# Analyse anti-malware PolinRider/BeaverTail — AUTONOME, et c'est deliberé.
+# Analyse anti-malware PolinRider/BeaverTail — AUTONOME, et c'est delibere.
 #
 # Les 43 autres depots de l'org appellent le workflow reutilisable de
 # bet360-ci/run_book. Ici c'est IMPOSSIBLE : ce depot est PUBLIC et run_book est
@@ -7,8 +7,14 @@
 # `startup_failure`, sans aucun job et sans journal (« log not found »). La porte
 # paraissait posee et ne gardait rien depuis le 2026-09-25.
 #
-# La logique est donc recopiee ici, volontairement courte : ce depot ne contient
-# que deux fichiers, `index.js` (le bundle minifie) et `package.json`.
+# C'est aussi le SEUL des 44 depots que le ruleset de push de l'org ne peut pas
+# couvrir : « Source public repos cannot have push rules » (HTTP 422).
+#
+# PIEGE D'ECRITURE, rencontre sur ce fichier meme : dans un bloc `run: |`, toute
+# ligne de continuation doit rester INDENTEE. Une liste de motifs ecrite en
+# colonne 0 termine le bloc, le YAML devient invalide, et GitHub rend un
+# `startup_failure` sans job ni journal — en affichant le CHEMIN du fichier au
+# lieu du `name:`. D'ou les motifs en arguments de `for`, sur une seule ligne.
 name: securite
 on:
   push:
@@ -21,27 +27,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Signatures de CONTENU. `grep -F` (chaines litterales) et jamais une
-      # regex bricolee : sur macOS comme sur GNU, un echappement invalide fait
-      # sortir grep en code 2 et N'EXAMINE RIEN, en silence. Ce piege a deja
-      # masque de vrais resultats.
+      # `grep -F` (chaines litterales) et JAMAIS une regex bricolee : un
+      # echappement invalide fait sortir grep en code 2 et n'examine RIEN, en
+      # silence. Ce piege a deja masque de vrais resultats.
+      # Limite a *.js et *.json : ce fichier-ci cite les motifs, il ne doit pas
+      # se detecter lui-meme.
       - name: Signatures PolinRider dans le bundle
         run: |
           set -u
-          MOTIFS='global['"'"'!'"'"']=
-global.i="A9-
-global['"'"'_V'"'"']
-atob(process.env
-createRequire(import.meta.url)'
           TROUVE=0
-          while IFS= read -r M; do
-            [ -z "$M" ] && continue
+          for M in "global['!']=" 'global.i="A9-' "global['_V']" 'atob(process.env' 'createRequire(import.meta.url)'; do
             if grep -rlF -- "$M" --include='*.js' --include='*.json' . 2>/dev/null | grep -q .; then
               echo "::error::signature PolinRider trouvee : $M"
               grep -rlF -- "$M" --include='*.js' --include='*.json' . 2>/dev/null
               TROUVE=1
             fi
-          done <<< "$MOTIFS"
+          done
           [ "$TROUVE" -eq 0 ] || exit 1
           echo "aucune signature de contenu"
 
@@ -58,9 +59,9 @@ createRequire(import.meta.url)'
           fi
           echo "aucun bloc d'espaces suspect"
 
-      # Le kit de fausses polices et le vecteur d'auto-execution VS Code.
       # Aucune installation FontAwesome legitime n'existe dans l'org : tout
-      # repertoire */fonts/fa-* est malveillant par construction.
+      # repertoire */fonts/fa-* est malveillant par construction. `.vscode/` est
+      # le vecteur d'auto-execution (tasks.json + runOn: folderOpen).
       - name: Chemins interdits (fausses polices, .vscode)
         run: |
           set -u
@@ -72,20 +73,18 @@ createRequire(import.meta.url)'
           fi
           echo "aucun chemin interdit"
 
-      # Ce depot ne doit JAMAIS contenir autre chose que le bundle, son
-      # manifeste et les deux fichiers de garde. Tout ajout est suspect : c'est
-      # un artefact de publication, pas un projet.
-      - name: Le depot ne contient que ce qu'il doit contenir
+      # Le controle le plus utile ici : ce depot est un ARTEFACT DE PUBLICATION,
+      # pas un projet. Il ne doit contenir que le bundle, son manifeste et les
+      # deux fichiers de garde. Tout ajout est suspect par construction.
+      - name: Le depot ne contient que ses quatre fichiers
         run: |
           set -u
-          ATTENDU='./.github/workflows/securite-polinrider.yml
-./.githooks/pre-commit
-./index.js
-./package.json'
-          REEL=$(find . -path ./.git -prune -o -type f -print 2>/dev/null | sort)
-          if [ "$REEL" != "$(echo "$ATTENDU" | sort)" ]; then
+          REEL=$(find . -path ./.git -prune -o -type f -print 2>/dev/null | sort | tr '\n' ' ')
+          ATTENDU='./.github/workflows/securite-polinrider.yml ./.githooks/pre-commit ./index.js ./package.json '
+          if [ "$REEL" != "$ATTENDU" ]; then
             echo "::error::contenu inattendu dans le depot publie"
-            diff <(echo "$ATTENDU" | sort) <(echo "$REEL") || true
+            echo "attendu : $ATTENDU"
+            echo "reel    : $REEL"
             exit 1
           fi
           echo "contenu conforme"
