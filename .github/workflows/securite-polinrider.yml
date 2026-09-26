@@ -82,8 +82,10 @@ jobs:
       - name: Le depot ne contient que ses quatre fichiers
         run: |
           set -u
+          # Les deux listes sont triees par le MEME sort : '.githooks' passe avant
+          # '.github' (o < u), et se fier a un ordre ecrit a la main echoue.
           REEL=$(find . -path ./.git -prune -o -type f -print 2>/dev/null | sort | tr '\n' ' ')
-          ATTENDU='./.github/workflows/securite-polinrider.yml ./.githooks/pre-commit ./index.js ./package.json '
+          ATTENDU=$(printf '%s\n' ./.github/workflows/securite-polinrider.yml ./.githooks/pre-commit ./index.js ./package.json | sort | tr '\n' ' ')
           if [ "$REEL" != "$ATTENDU" ]; then
             echo "::error::contenu inattendu dans le depot publie"
             echo "attendu : $ATTENDU"
