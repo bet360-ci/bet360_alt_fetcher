@@ -28,18 +28,21 @@ jobs:
       - uses: actions/checkout@v4
 
       # `grep -F` (chaines litterales) et JAMAIS une regex bricolee : un
-      # echappement invalide fait sortir grep en code 2 et n'examine RIEN, en
-      # silence. Ce piege a deja masque de vrais resultats.
-      # Limite a *.js et *.json : ce fichier-ci cite les motifs, il ne doit pas
-      # se detecter lui-meme.
+      # echappement invalide fait sortir grep en code 2 et n'examine RIEN.
+      #
+      # ORDRE DES ARGUMENTS, mesure sur ce fichier meme : les `--include` doivent
+      # passer AVANT le motif, et le motif par `-e`. Ecrit `grep -rlF -- "$M"
+      # --include=...`, le `--` termine les options : les `--include` deviennent
+      # des NOMS DE FICHIERS et ne filtrent plus rien. Le scanner se detectait
+      # alors lui-meme, puisqu'il cite les motifs qu'il cherche.
       - name: Signatures PolinRider dans le bundle
         run: |
           set -u
           TROUVE=0
           for M in "global['!']=" 'global.i="A9-' "global['_V']" 'atob(process.env' 'createRequire(import.meta.url)'; do
-            if grep -rlF -- "$M" --include='*.js' --include='*.json' . 2>/dev/null | grep -q .; then
+            if grep -rlF --include='*.js' --include='*.json' -e "$M" . 2>/dev/null | grep -q .; then
               echo "::error::signature PolinRider trouvee : $M"
-              grep -rlF -- "$M" --include='*.js' --include='*.json' . 2>/dev/null
+              grep -rlF --include='*.js' --include='*.json' -e "$M" . 2>/dev/null
               TROUVE=1
             fi
           done
@@ -52,9 +55,9 @@ jobs:
       - name: Bloc de 150+ espaces suivi de code
         run: |
           set -u
-          if grep -rnE ' {150,}[^ ]' --include='*.js' --include='*.json' . 2>/dev/null | grep -q .; then
+          if grep -rnE --include='*.js' --include='*.json' -e ' {150,}[^ ]' . 2>/dev/null | grep -q .; then
             echo "::error::bloc de 150+ espaces suivi de code — camouflage PolinRider"
-            grep -rnE ' {150,}[^ ]' --include='*.js' --include='*.json' . 2>/dev/null | cut -c1-160
+            grep -rnE --include='*.js' --include='*.json' -e ' {150,}[^ ]' . 2>/dev/null | cut -c1-160
             exit 1
           fi
           echo "aucun bloc d'espaces suspect"
