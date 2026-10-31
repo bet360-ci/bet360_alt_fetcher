@@ -1,6 +1,6 @@
 {
   "name": "alt-fetcher",
-  "version": "2.13.1",
+  "version": "2.13.2",
   "type": "module",
   "sideEffects": false,
   "exports": { ".": "./index.js", "./leger": "./leger.js" }
